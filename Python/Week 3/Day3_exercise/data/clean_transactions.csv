@@ -1,0 +1,6 @@
+transaction_id,account_id,type,amount,date,description
+1001,101,deposit,5000.0,2026-07-21,Salary
+1002,101,withdrawal,-250.0,2026-07-21,ATM
+1003,102,deposit,12000.0,2021-07-26,Salary Thabo
+1004,103,transfer,-1500.0,2026-07-21,No description
+1005,101,withdrawal,-99.5,2026-07-21,Coffee shop
