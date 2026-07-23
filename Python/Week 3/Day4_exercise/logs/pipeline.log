@@ -1,0 +1,24 @@
+2026-07-23 10:19:25  INFO      === FinTrust Transaction Pipeline starting ===
+2026-07-23 10:19:25  INFO      Input:  data/raw_transactions.csv
+2026-07-23 10:19:25  WARNING   Skipped: Row 5: could not convert string to float: 'abc'
+2026-07-23 10:19:25  WARNING   Skipped: Row 7: invalid literal for int() with base 10: ''
+2026-07-23 10:19:25  INFO      Processed: 8 rows, skipped: 2
+2026-07-23 10:19:25  INFO      Clean CSV written: data/clean_transactions.csv
+2026-07-23 10:19:25  INFO      Summary JSON written: data/daily_summary.json
+2026-07-23 10:19:25  INFO      === Pipeline complete ===
+2026-07-23 10:21:28  INFO      === FinTrust Transaction Pipeline starting ===
+2026-07-23 10:21:28  INFO      Input:  data/raw_transactions.csv
+2026-07-23 10:21:28  CRITICAL  Input file not found: data/raw_transactions.csv — aborting
+2026-07-23 10:22:29  INFO      === FinTrust Transaction Pipeline starting ===
+2026-07-23 10:22:29  INFO      Input:  data/raw_transactions.csv
+2026-07-23 10:22:29  WARNING   Skipped: Row 5: could not convert string to float: 'abc'
+2026-07-23 10:22:29  WARNING   Skipped: Row 7: invalid literal for int() with base 10: ''
+2026-07-23 10:22:29  INFO      Processed: 8 rows, skipped: 2
+2026-07-23 10:22:29  INFO      Clean CSV written: data/clean_transactions.csv
+2026-07-23 10:22:29  INFO      Summary JSON written: data/daily_summary.json
+2026-07-23 10:22:29  INFO      === Pipeline complete ===
+2026-07-23 10:22:39  INFO      === FinTrust Transaction Pipeline starting ===
+2026-07-23 10:22:39  INFO      Input:  data/raw_transactions.csv
+2026-07-23 10:26:37  INFO      === FinTrust Transaction Pipeline starting ===
+2026-07-23 10:26:37  INFO      Input:  data/raw_transactions.csv
+2026-07-23 10:26:37  CRITICAL  Permission denied checking input file: data/raw_transactions.csv — aborting

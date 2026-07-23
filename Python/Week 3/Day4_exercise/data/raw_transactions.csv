@@ -1,0 +1,11 @@
+TxID,AcctID,TYPE,Amount,Date,Desc
+1001,5001,Deposit,1000.00,2026-07-01,Salary payment
+1002,5002,Withdrawal,450.50,01/07/2026,ATM withdrawal
+1003,5001,deposit,100.00,2026-07-02,Refund
+1004,5003,WITHDRAWAL,abc,2026-07-03,Corrupted amount
+1005,5004,Deposit,3000.00,03/07/26,Bonus payment
+1006,,Withdrawal,200.00,2026-07-04,Missing account id
+1007,5002,Deposit,750.25,2026-07-05,
+1008,5005,withdrawal,99.99,2026/07/06,Bad date format
+1009,5001,Deposit,1200.00,2026-07-07,Interest payment
+1010,5003,Withdrawal,0,2026-07-08,Zero amount edge case

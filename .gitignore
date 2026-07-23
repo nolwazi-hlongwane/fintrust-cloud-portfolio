@@ -216,3 +216,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+.DS_Store
+!Python/Week 3/Day4_exercise/logs/pipeline.log

@@ -1,0 +1,9 @@
+transaction_id,account_id,type,amount,date,description
+1001,5001,deposit,1000.0,2026-07-01,Salary payment
+1002,5002,withdrawal,450.5,2026-07-01,ATM withdrawal
+1003,5001,deposit,100.0,2026-07-02,Refund
+1005,5004,deposit,3000.0,2026-07-03,Bonus payment
+1007,5002,deposit,750.25,2026-07-05,No description
+1008,5005,withdrawal,99.99,2026-07-06,Bad date format
+1009,5001,deposit,1200.0,2026-07-07,Interest payment
+1010,5003,withdrawal,0.0,2026-07-08,Zero amount edge case
