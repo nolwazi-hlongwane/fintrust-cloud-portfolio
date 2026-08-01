@@ -1,0 +1,26 @@
+============================================================
+FINTRUST DAILY TRANSACTION REPORT
+Generated: 2026-08-01 15:11:36
+============================================================
+
+-- SUMMARY --------------------------------------------
+  Total transactions : 8
+  Total volume       : ZAR 16,996.49
+  Average amount     : ZAR 2,124.56
+  Min / Max          : ZAR 120.00 / ZAR 9,999.99
+
+-- BREAKDOWN BY TYPE ------------------------------------
+  TRANSFER        4 txns   ZAR  15,150.74
+  DEPOSIT         2 txns   ZAR     925.75
+  WITHDRAWAL      2 txns   ZAR     920.00
+
+-- BREAKDOWN BY STATUS ----------------------------------
+  COMPLETED       7 txns   ZAR  16,876.49
+  FAILED          1 txns   ZAR     120.00
+
+-- TOP 3 LARGEST TRANSACTIONS ---------------------------
+  #1  TXN-008  FT-001  ZAR 9,999.99  [TRANSFER / COMPLETED]
+  #2  TXN-005  FT-005  ZAR 3,200.00  [TRANSFER / COMPLETED]
+  #3  TXN-001  FT-001  ZAR 1,500.00  [TRANSFER / COMPLETED]
+
+============================================================
