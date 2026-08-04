@@ -1,0 +1,116 @@
+# Week 5 Day 3 — Route 53 Hosted Zone & Routing Policies
+
+## DNS Architecture
+
+**Hosted zone:** `fintrust-lab.internal` — Public hosted zone (a real internal
+service-discovery zone would be Private; Public was used here for lab
+purposes since Route 53's health checkers need public reachability to
+demonstrate failover behaviour).
+
+| Record | Type | Target | Notes |
+|--------|------|--------|-------|
+| `app.fintrust-lab.internal` | Alias A | `fintrust-alb` | Free, auto-updates if the ALB's IP changes, works at any name level including the apex |
+| `api.fintrust-lab.internal` | CNAME | ALB DNS name | Fixed TTL (300s), subdomain only — CNAME cannot point the zone apex itself |
+| `canary.fintrust-lab.internal` (production) | Alias A, Weighted | `fintrust-alb` | Weight 90 |
+| `canary.fintrust-lab.internal` (canary) | Alias A, Weighted | second ALB / same ALB for demo | Weight 10 |
+
+## Why Alias, Not CNAME, for `app`
+
+Alias records are AWS-specific and can point at AWS resources — ALBs,
+CloudFront distributions, other Route 53 records — with two properties CNAME
+doesn't have: they're **free** to query, and Route 53 **auto-updates** the
+underlying IP if the ALB's address changes, so there's nothing to maintain
+manually. CNAME would have worked here too since `app` is a subdomain, not
+the zone apex — but Alias is strictly better for any AWS resource target, so
+there's no real reason to prefer CNAME unless the target is a non-AWS
+hostname.
+
+## Why CNAME Was Still Used for `api`
+
+Purely to demonstrate the record type — pointing `api` at the raw ALB DNS
+name via CNAME works because `api` is a subdomain, never the root domain
+`fintrust-lab.internal` itself. If this were pointing the **root domain** at
+the ALB, CNAME would be invalid outright (RFC 1912 forbids a CNAME at the
+zone apex) and Alias would be the only option.
+
+## Routing Policy Decision Quiz
+
+| # | Requirement | Correct Policy |
+|---|---|---|
+| 1 | Route Nigeria → Lagos region, South Africa → Cape Town | **Geolocation** — routes by country/continent, not by measured network performance |
+| 2 | 80% traffic to current production, 20% to a new version under test | **Weighted** — proportional split by assigned weight |
+| 3 | Route to the server with the lowest ping time from the user's location | **Latency** — measures actual round-trip time, not political geography |
+| 4 | Automatic failover if primary ALB health check fails | **Failover** — active/passive, requires a health check on the primary |
+| 5 | Spread traffic equally across 3 ALBs at the DNS layer | **Weighted (equal weights)** or **Multivalue** — either distributes across multiple targets; Multivalue also strips out unhealthy targets automatically |
+| 6 | Route all traffic to one IP, no health checks, no logic needed | **Simple** — the only policy that genuinely cannot support health checks |
+
+## Group Discussion
+
+**What is TTL propagation delay, and why does it matter for Failover routing?**
+TTL is how long a resolver caches a DNS answer before it's allowed to ask
+again. During that window, clients keep using the cached (possibly now-dead)
+IP even after Route 53 has switched to the secondary record — the failover
+decision happened, but the client hasn't found out yet. For Failover
+records I'd set TTL to **60 seconds**, low enough that a real outage
+resolves within roughly 2-3 minutes total (health check failure detection at
+~90s + TTL expiry at 60s), without setting it so low that it generates
+excessive DNS query volume during normal operation.
+
+**FinTrust wants to block users from specific countries. Which policy, and can it fully block traffic?**
+**Geolocation** is the policy, but it cannot *block* traffic outright — DNS
+routing only controls which record a query resolves to. Geolocation can be
+used to *not* return a normal record for a blocked country (e.g. resolve
+them to a "service unavailable" page or a non-functional target), but a
+sufficiently technical user could still reach the actual IP directly if they
+already know it, or via a different DNS path. True blocking needs an
+enforcement layer that can actually reject traffic — a WAF geo-match rule or
+a Network ACL/Security Group with IP-based rules — DNS-layer geolocation is
+a routing hint, not an access control.
+
+**How does Latency routing differ from Geolocation, and can a South African user land on US East?**
+Geolocation routes by *political* location — a country or continent mapped
+to a specific record, regardless of actual network performance. Latency
+routing ignores geography entirely and routes purely on measured round-trip
+time to each Region. Yes — if for some reason the RTT from a South African
+user's ISP happened to be lower to `us-east-1` than to `af-south-1` (unusual,
+but possible depending on network peering and routing paths), Latency
+routing would send them to US East. Geolocation would never do this, since
+it doesn't measure performance at all.
+
+## Individual Reflection
+
+**Weighted routing configuration built, and how I'd adjust it for a gradual rollout:**
+I set up `canary.fintrust-lab.internal` with two records sharing the same
+name — `production` at weight 90 and `canary` at weight 10, both Alias
+records pointing at ALB targets. Route 53 distributes roughly 10% of queries
+to the canary record and 90% to production, proportional to the weights
+(not an exact split on every single request, but converging to that ratio
+over enough queries). For a gradual rollout from 0% → 10% → 50% → 100%, I'd
+change only the weight values over time — e.g. start canary at weight 0
+(production 100, canary 0 — nothing routes there yet), then canary 10 /
+production 90, then canary 50 / production 50, and finally flip fully by
+setting canary to 100 and production to 0 (or just deleting the production
+record). No DNS record *names* change at any step — only the weight
+numbers, which is what makes this pattern safe to adjust incrementally
+without touching application configuration.
+
+**When is Geolocation Proximity better than Geolocation?**
+Plain Geolocation is rigid — a country or continent maps to exactly one
+record, full stop. Geoproximity is useful when I need to *shift capacity*
+between regions that are both geographically valid options — for example, if
+`af-south-1` is nearing capacity and I want to push some West African
+traffic toward a European region instead, without reclassifying any
+country's political mapping. The "bias" value lets me expand or shrink a
+region's effective coverage area gradually, which plain Geolocation has no
+mechanism for at all — it's an all-or-nothing per-location assignment.
+
+**"Can Route 53 replace my load balancer?"**
+No — they operate at different layers and solve different problems. Route
+53 makes a decision at the **DNS level**, before any connection is even
+established — it just tells the client which IP to connect to. It has no
+visibility into individual requests, can't inspect HTTP headers or paths,
+and can't do session persistence. An ALB receives the actual TCP connection
+and makes per-request decisions (path-based routing, TLS termination,
+target health). In practice they work *together*, not as alternatives —
+Route 53 points a domain name at an ALB's DNS name; it doesn't replace what
+the ALB does once traffic actually arrives.
