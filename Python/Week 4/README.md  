@@ -1,0 +1,109 @@
+# Week 4 — Databases & Production-Grade Python Error Handling
+
+## What I Built
+- A full custom exception hierarchy for FinTrust's transaction processing: `BankingError` → `TransactionError` → `InsufficientFundsError`, `AccountFrozenError`, `DailyLimitExceededError`, `InvalidAmountError`, `CurrencyMismatchError`
+- A `process_withdrawal()` function validating transactions in priority order, with an automatic audit log for every failure
+- Debugged and fixed 5 deliberately-broken bugs in a payment processor (a typo causing a `KeyError`, a wrong fee percentage, double-counted fees, and a miscounted failure total)
+- A complete 3-phase ETL pipeline: `transactions.csv` → validate → SQLite (parameterised inserts, idempotent) → formatted daily report
+- Refactored that pipeline into a proper Python package (`fintrust_pipeline/` with `loader.py`, `database.py`, `reporter.py`) plus a `pandas`-based analysis script with groupby, filtering, and CSV export
+
+## Key Concepts Demonstrated
+- **RDS & Aurora (AWS, conceptual):** Multi-AZ (synchronous, standby not readable, ~60-120s failover) vs Read Replicas (async, readable, up to 15 on Aurora); Aurora's 6-copies-across-3-AZs storage model eliminating replica lag; Aurora failover in ~30s vs RDS's ~60-120s
+- **DynamoDB, QLDB, DocumentDB, Redshift, ElastiCache (AWS, conceptual):** matching data model and access pattern to the right purpose-built service — key-value at scale, immutable cryptographic ledgers, MongoDB-compatible documents, columnar OLAP analytics, in-memory caching
+- **Custom exceptions:** building a hierarchy so callers can catch as narrowly or broadly as needed; always calling `super().__init__(message)`; attaching domain-specific attributes (`shortfall`, `remaining`) so calling code can inspect *why* something failed
+- **Debugging discipline:** reading a traceback bottom-up, using `pdb`/`breakpoint()`, distinguishing loud bugs (exceptions) from silent bugs (wrong output, no crash)
+- **ETL pipeline patterns:** parameterised SQL (`?` placeholders — SQL-injection-proof by construction), idempotency via primary key, validating before persisting, separation of concerns across independently-testable functions
+- **Python packaging:** organising a single script into a proper package (`__init__.py`, modules with single responsibilities), virtual environments (`venv`, `requirements.txt`), `boto3` client vs resource pattern, `pandas` DataFrames for groupby/filter/export
+
+## How to Run
+```bash
+cd "Python/Week 4/Day1_exercise" && python3 transactions.py
+cd "Python/Week 4/Day2_exercise" && python3 debug_me.py
+cd "Python/Week 4/Day3_exercise" && python3 pipeline.py
+cd "Python/Week 4/Day4_exercise" && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && python3 main.py && python3 analyse.py
+```
+
+## Files
+| File | Description |
+|------|-------------|
+| `Python/Week 4/Day1_exercise/transactions.py` | Exception hierarchy, transaction processor, audit log |
+| `Python/Week 4/Day2_exercise/debug_me.py` | Debugged payment processor — 5 bugs found and fixed |
+| `Python/Week 4/Day3_exercise/pipeline.py` | 3-phase CSV → SQLite → report ETL pipeline |
+| `Python/Week 4/Day4_exercise/fintrust_pipeline/` | Same pipeline refactored into a proper package |
+| `Python/Week 4/Day4_exercise/analyse.py` | pandas analysis of the transaction database |
+| `Week 4/db-architecture-diagram.md` | FinTrust's 7-layer AWS database architecture |
+| 
+
+## Reflection
+Debugging the broken payment processor was the standout exercise this week — the `balanse` typo was an easy catch, but the double-counted fee and miscounted failure total needed me to actually verify the arithmetic by hand rather than trust that "it ran without crashing" meant it was correct. That distinction between loud bugs and silent bugs is something I'll carry into every script I write from now on. Building the custom exception hierarchy also changed how I think about error handling — attaching `shortfall` or `remaining` directly to the exception object means the caller gets structured data to act on, not just a string to log. 
+
+# Week 4 Reflection
+
+## Q1: Why split one PostgreSQL database into seven AWS services?
+
+FinTrust's original setup ran transactions, sessions, trade documents, and
+analytics all on one general-purpose PostgreSQL instance. Splitting this out
+is justified because each workload has a genuinely different access pattern:
+transactions need ACID guarantees and low-latency writes (RDS Multi-AZ);
+sessions need active-active sub-millisecond reads across two Regions
+(DynamoDB Global Tables); the regulatory audit trail needs mathematically
+provable immutability that no administrator can override (QLDB); and 5-year
+BI queries need columnar storage and MPP to scan hundreds of millions of rows
+without competing with live transaction writes (Redshift). The operational
+cost of this split is real and worth naming honestly: seven services means
+seven CloudWatch dashboards to monitor, seven separate IAM policy surfaces to
+secure correctly, and seven line items on the AWS bill instead of one. That
+cost is accepted because a single RDS instance trying to serve all four
+access patterns would degrade every one of them — an analytics query
+competing for I/O with a live transaction write is a classic self-inflicted
+performance problem.
+
+## Q2: ETL pipeline — SQLite vs RDS Multi-AZ
+
+If two instances of `pipeline.py` ran simultaneously against the same SQLite
+file, SQLite's file-level locking would kick in: one process would hold the
+write lock while the other blocks or raises a `database is locked` error,
+because SQLite only supports a single writer at a time. RDS Multi-AZ does
+NOT solve this concurrency problem directly — Multi-AZ exists purely for
+Availability Zone-level fault tolerance (a synchronous standby that takes
+over automatically if the primary instance or its AZ fails, typically within
+60-120 seconds). What actually solves concurrent-write contention at scale is
+RDS's underlying engine supporting genuine multi-writer transactions with
+row-level locking and MVCC (multi-version concurrency control), plus
+connection pooling on the application side. Read-heavy contention is a
+separate problem again, solved by Read Replicas, not Multi-AZ — the standby
+in a Multi-AZ pair is not even readable. So three different problems, three
+different features: single-writer file locking (SQLite's limit) → engine-level
+concurrent transactions (RDS/Aurora's design); AZ failure → Multi-AZ; read
+scaling → Read Replicas.
+
+## Q3: Benefit of a Python package over a single file
+
+Splitting `pipeline.py` into `fintrust_pipeline/loader.py`, `database.py`,
+and `reporter.py` made three things concretely easier, not just "more
+organised" in the abstract. First, `validate_row()` in `loader.py` can now be
+unit-tested in complete isolation — I can call it with a hand-built dict and
+check the return value, with no SQLite connection, no CSV file, and no
+report generation involved at all. Second, if FinTrust migrates from SQLite
+to RDS PostgreSQL in production, only `database.py` needs to change — the
+connection setup and the `?` placeholders become `%s` for `psycopg2` — while
+`loader.py` and `reporter.py` don't need to know or care that the underlying
+database changed. Third, a CI pipeline can import and test `fintrust_pipeline.loader`
+directly without needing to spin up the whole pipeline end-to-end, which
+matters once a project has real automated tests running on every commit.
+
+## Q4: Week 4 to Week 5 bridge
+
+The 7-layer database architecture built this week is not yet placed inside a
+VPC with correct network isolation — that's Week 5's job. Two specific
+configurations that will be needed: first, **RDS in a private subnet** — the
+PostgreSQL instance should have no public IP at all, so the only way to reach
+it is through the VPC's private routing from the application tier's subnet,
+meaning a misconfigured security group on the public internet can never
+expose the database directly. Second, a **DynamoDB Gateway Endpoint** — without
+one, traffic from an EC2 instance or Lambda function to DynamoDB would route
+out over the public internet (even though it never leaves AWS's network
+physically) and could be blocked by an overly restrictive NACL; a Gateway
+Endpoint keeps that traffic entirely inside the AWS network at the routing
+table level, at no additional cost, and is the standard way production
+FinTrust workloads reach DynamoDB from inside a VPC.
